@@ -5,6 +5,8 @@ This module contains the core mathematical implementations for:
 - Mandelbrot Set
 - Julia Set
 - Fractal Tree
+
+Optimized with NumPy vectorization for faster rendering.
 """
 
 import numpy as np
@@ -20,7 +22,7 @@ def mandelbrot_set(
     max_iterations: int = 100
 ) -> np.ndarray:
     """
-    Generate the Mandelbrot set fractal.
+    Generate the Mandelbrot set fractal using vectorized NumPy operations.
     
     The Mandelbrot set is the set of complex numbers c for which the function
     f(z) = z² + c does not diverge when iterated from z = 0.
@@ -45,8 +47,8 @@ def mandelbrot_set(
     y_max = center_y + 2.0 / zoom
     
     # Create coordinate grids
-    x = np.linspace(x_min, x_max, width)
-    y = np.linspace(y_min, y_max, height)
+    x = np.linspace(x_min, x_max, width, dtype=np.float64)
+    y = np.linspace(y_min, y_max, height, dtype=np.float64)
     X, Y = np.meshgrid(x, y)
     
     # Initialize complex plane
@@ -59,7 +61,7 @@ def mandelbrot_set(
     # Track which points haven't diverged yet
     not_diverged = np.ones(Z.shape, dtype=bool)
     
-    # Iterate
+    # Vectorized iteration loop
     for i in range(max_iterations):
         Z[not_diverged] = Z[not_diverged] ** 2 + C[not_diverged]
         
@@ -90,7 +92,7 @@ def julia_set(
     max_iterations: int = 100
 ) -> np.ndarray:
     """
-    Generate the Julia set fractal.
+    Generate the Julia set fractal using vectorized NumPy operations.
     
     The Julia set is similar to the Mandelbrot set but uses a fixed complex
     constant c and varies the initial z value. Different values of c produce
@@ -118,8 +120,8 @@ def julia_set(
     y_max = center_y + 2.0 / zoom
     
     # Create coordinate grids
-    x = np.linspace(x_min, x_max, width)
-    y = np.linspace(y_min, y_max, height)
+    x = np.linspace(x_min, x_max, width, dtype=np.float64)
+    y = np.linspace(y_min, y_max, height, dtype=np.float64)
     X, Y = np.meshgrid(x, y)
     
     # Initialize complex plane with the starting z values
@@ -134,7 +136,7 @@ def julia_set(
     # Track which points haven't diverged yet
     not_diverged = np.ones(Z.shape, dtype=bool)
     
-    # Iterate
+    # Vectorized iteration loop
     for i in range(max_iterations):
         Z[not_diverged] = Z[not_diverged] ** 2 + C
         
@@ -163,11 +165,14 @@ def fractal_tree(
     start_length: float = 150.0
 ) -> np.ndarray:
     """
-    Generate a fractal tree using recursive branching.
+    Generate a fractal tree using iterative branching (optimized).
     
     This creates a binary tree where each branch splits into two smaller
     branches at a specified angle. The tree is rendered as a distance field
     for smooth coloring.
+    
+    Uses an iterative stack-based approach instead of recursion for better
+    performance.
     
     Args:
         width: Width of the output image in pixels.
@@ -189,59 +194,47 @@ def fractal_tree(
     result = np.zeros((height, width), dtype=np.float64)
     
     # Starting position (bottom center)
-    start_x = width / 2
-    start_y = height - 50  # Leave some margin at bottom
+    start_x = width / 2.0
+    start_y = float(height - 50)  # Leave some margin at bottom
     
-    def draw_branch(
-        x: float, y: float, 
-        angle: float, 
-        length: float, 
-        depth: int
-    ) -> None:
-        """
-        Recursively draw a branch and its children.
+    # Use iterative stack-based approach (more efficient than recursion)
+    # Stack entries: (x, y, angle, length, depth)
+    stack = [(start_x, start_y, 0.0, start_length, max_depth)]
+    
+    while stack:
+        x, y, angle, length, depth = stack.pop()
         
-        Uses line drawing with anti-aliasing via distance field.
-        """
         if depth == 0 or length < 1:
-            return
+            continue
         
         # Calculate end point of this branch
         end_x = x + length * np.sin(angle)
         end_y = y - length * np.cos(angle)  # Negative because y goes down
         
-        # Draw the branch (simplified: mark pixels along the line)
+        # Draw the branch using vectorized line drawing
         num_points = max(int(length), 1)
-        for t in np.linspace(0, 1, num_points):
-            px = int(x + t * (end_x - x))
-            py = int(y + t * (end_y - y))
-            
-            if 0 <= px < width and 0 <= py < height:
-                # Store normalized depth (closer to max_depth = brighter)
-                result[py, px] = max(result[py, px], depth / max_depth)
+        t_values = np.linspace(0, 1, num_points)
         
-        # Recursively draw child branches
+        px_values = (x + t_values * (end_x - x)).astype(int)
+        py_values = (y + t_values * (end_y - y)).astype(int)
+        
+        # Filter points within bounds
+        valid_mask = (px_values >= 0) & (px_values < width) & \
+                     (py_values >= 0) & (py_values < height)
+        
+        if np.any(valid_mask):
+            normalized_depth = depth / max_depth
+            for px, py in zip(px_values[valid_mask], py_values[valid_mask]):
+                if normalized_depth > result[py, px]:
+                    result[py, px] = normalized_depth
+        
+        # Add child branches to stack
         new_length = length * length_ratio
         
-        # Left branch
-        draw_branch(
-            end_x, end_y,
-            angle - branch_angle,
-            new_length,
-            depth - 1
-        )
-        
         # Right branch
-        draw_branch(
-            end_x, end_y,
-            angle + branch_angle,
-            new_length,
-            depth - 1
-        )
-    
-    # Start drawing from the trunk
-    # Angle 0 points upward
-    draw_branch(start_x, start_y, 0.0, start_length, max_depth)
+        stack.append((end_x, end_y, angle + branch_angle, new_length, depth - 1))
+        # Left branch
+        stack.append((end_x, end_y, angle - branch_angle, new_length, depth - 1))
     
     return result
 
