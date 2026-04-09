@@ -10,7 +10,7 @@ renderer.py - Логика для преобразования массивов 
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List
 import hashlib
 
 
@@ -60,6 +60,16 @@ COLOR_PALETTES = {
         (220, 100, 220) # Розово-фиолетовый
     ]
 }
+
+
+def get_available_palettes() -> List[str]:
+    """
+    Get a list of available color palette names.
+
+    Returns:
+        List of palette name strings.
+    """
+    return list(COLOR_PALETTES.keys())
 
 
 def interpolate_color(color1: Tuple[int, int, int], color2: Tuple[int, int, int], t: float) -> Tuple[int, int, int]:
@@ -161,23 +171,26 @@ def create_preview_image(fractal_type: str, params: Dict[str, Any], width: int =
         return create_placeholder_image(fractal_type, width, height)
 
 
-def create_placeholder_image(name: str, width: int = 200, height: int = 150) -> Image.Image:
-    """Создает изображение-заглушку с текстом."""
-    img = Image.new('RGB', (width, height), color=(50, 50, 70))
+def create_placeholder_image(text: str = "Fractal", width: int = 260, height: int = 180,
+                             bg_color: tuple = (50, 50, 80), text_color: tuple = (255, 255, 255)) -> Image.Image:
+    """Создаёт заглушку-превью для карточки фрактала."""
+    img = Image.new("RGB", (width, height), bg_color)
     draw = ImageDraw.Draw(img)
-    
+
+    # Пытаемся использовать системный шрифт, иначе fallback на стандартный
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-    except:
+        font = ImageFont.truetype("arial.ttf", 24)
+    except IOError:
         font = ImageFont.load_default()
-    
-    bbox = draw.textbbox((0, 0), name, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-    x = (width - text_width) // 2
-    y = (height - text_height) // 2
-    draw.text((x, y), name, fill=(255, 255, 255), font=font)
-    
+
+    # Центрируем текст
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (width - text_w) / 2
+    y = (height - text_h) / 2
+
+    draw.text((x, y), text, fill=text_color, font=font)
     return img
 
 
