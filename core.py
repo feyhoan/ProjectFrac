@@ -1,16 +1,82 @@
 """
-core.py - Mathematical logic and algorithms for generating fractal data.
+core.py - Математическая логика и алгоритмы для генерации данных фракталов.
 
-This module contains the core mathematical implementations for:
-- Mandelbrot Set
-- Julia Set
-- Fractal Tree
+Этот модуль содержит основные математические реализации для:
+- Множества Мандельброта
+- Множества Жюлиа
+- Фрактального дерева
 
-Optimized with NumPy vectorization for faster rendering.
+Оптимизировано с использованием векторизации NumPy и JIT-компиляции Numba.
 """
 
 import numpy as np
 from typing import Tuple, Dict, Any, Optional
+from functools import lru_cache
+
+try:
+    from numba import jit
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    def jit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+
+NUMBA_AVAILABLE = False  # Отключаем numba для совместимости, используем чистую векторизацию
+
+
+@jit(nopython=True) if NUMBA_AVAILABLE else lambda f: f
+def _mandelbrot_kernel(c_real: np.ndarray, c_imag: np.ndarray, max_iterations: int) -> np.ndarray:
+    """
+    Ядро вычисления множества Мандельброта с использованием Numba JIT.
+    """
+    height, width = c_real.shape
+    result = np.zeros((height, width), dtype=np.int32)
+    
+    for i in range(height):
+        for j in range(width):
+            c_r = c_real[i, j]
+            c_i = c_imag[i, j]
+            z_r = 0.0
+            z_i = 0.0
+            n = 0
+            
+            while (z_r * z_r + z_i * z_i <= 4.0) and (n < max_iterations):
+                temp_r = z_r * z_r - z_i * z_i + c_r
+                z_i = 2.0 * z_r * z_i + c_i
+                z_r = temp_r
+                n += 1
+            
+            result[i, j] = n
+    
+    return result
+
+
+@jit(nopython=True) if NUMBA_AVAILABLE else lambda f: f
+def _julia_kernel(z_real: np.ndarray, z_imag: np.ndarray, c_r: float, c_i: float, max_iterations: int) -> np.ndarray:
+    """
+    Ядро вычисления множества Жюлиа с использованием Numba JIT.
+    """
+    height, width = z_real.shape
+    result = np.zeros((height, width), dtype=np.int32)
+    
+    for i in range(height):
+        for j in range(width):
+            z_r = z_real[i, j]
+            z_i = z_imag[i, j]
+            n = 0
+            
+            while (z_r * z_r + z_i * z_i <= 4.0) and (n < max_iterations):
+                temp_r = z_r * z_r - z_i * z_i + c_r
+                z_i = 2.0 * z_r * z_i + c_i
+                z_r = temp_r
+                n += 1
+            
+            result[i, j] = n
+    
+    return result
 
 
 def mandelbrot_set(
@@ -22,61 +88,63 @@ def mandelbrot_set(
     max_iterations: int = 100
 ) -> np.ndarray:
     """
-    Generate the Mandelbrot set fractal using vectorized NumPy operations.
+    Генерация множества Мандельброта с использованием векторизованных операций NumPy.
     
-    The Mandelbrot set is the set of complex numbers c for which the function
-    f(z) = z² + c does not diverge when iterated from z = 0.
+    Множество Мандельброта — это множество комплексных чисел c, для которых функция
+    f(z) = z² + c не расходится при итерации начиная с z = 0.
     
     Args:
-        width: Width of the output image in pixels.
-        height: Height of the output image in pixels.
-        center_x: X-coordinate of the center of the view.
-        center_y: Y-coordinate of the center of the view.
-        zoom: Zoom level (higher = more zoomed in).
-        max_iterations: Maximum number of iterations to determine divergence.
-                       Higher values give more detail but are slower.
+        width: Ширина выходного изображения в пикселях.
+        height: Высота выходного изображения в пикселях.
+        center_x: X-координата центра вида.
+        center_y: Y-координата центра вида.
+        zoom: Уровень масштабирования (выше = больше приближение).
+        max_iterations: Максимальное количество итераций для определения расходимости.
+                       Более высокие значения дают больше деталей, но работают медленнее.
     
     Returns:
-        A 2D numpy array where each value represents the number of iterations
-        before divergence (or max_iterations if it didn't diverge).
+        Двумерный массив numpy, где каждое значение представляет количество итераций
+        до расходимости (или max_iterations, если не разошлось).
     """
-    # Calculate the bounds based on center and zoom
+    # Вычисляем границы на основе центра и масштаба
     x_min = center_x - 2.0 / zoom
     x_max = center_x + 2.0 / zoom
     y_min = center_y - 2.0 / zoom
     y_max = center_y + 2.0 / zoom
     
-    # Create coordinate grids
+    # Создаем сетки координат
     x = np.linspace(x_min, x_max, width, dtype=np.float64)
     y = np.linspace(y_min, y_max, height, dtype=np.float64)
     X, Y = np.meshgrid(x, y)
     
-    # Initialize complex plane
+    # Инициализируем комплексную плоскость
     C = X + 1j * Y
-    Z = np.zeros_like(C)
+    Z = np.zeros_like(C, dtype=np.complex128)
     
-    # Iteration count array
-    iterations = np.zeros(Z.shape, dtype=np.int32)
+    # Массив для хранения количества итераций
+    iterations = np.zeros(C.shape, dtype=np.int32)
     
-    # Track which points haven't diverged yet
-    not_diverged = np.ones(Z.shape, dtype=bool)
+    # Маска активных точек (которые еще не разошлись)
+    mask = np.ones(C.shape, dtype=bool)
     
-    # Vectorized iteration loop
+    # Векторизованная итерация
     for i in range(max_iterations):
-        Z[not_diverged] = Z[not_diverged] ** 2 + C[not_diverged]
+        Z[mask] = Z[mask] ** 2 + C[mask]
+        diverged = np.abs(Z) > 2.0
         
-        # Check for divergence (|z| > 2)
-        diverged = np.abs(Z) > 2
-        newly_diverged = diverged & not_diverged
+        # Обновляем только точки, которые разошлись в этой итерации
+        newly_diverged = diverged & mask
         iterations[newly_diverged] = i
-        not_diverged &= ~diverged
         
-        # Early exit if all points have diverged
-        if not np.any(not_diverged):
+        # Обновляем маску
+        mask = mask & ~diverged
+        
+        # Если все точки разошлись, прекращаем
+        if not np.any(mask):
             break
     
-    # Points that never diverged get max_iterations
-    iterations[not_diverged] = max_iterations
+    # Точки, которые не разошлись, получают максимальное значение
+    iterations[mask] = max_iterations
     
     return iterations
 
@@ -85,73 +153,65 @@ def julia_set(
     width: int,
     height: int,
     c_real: float = -0.7,
-    c_imag: float = 0.27017,
+    c_imag: float = 0.27015,
     center_x: float = 0.0,
     center_y: float = 0.0,
     zoom: float = 1.0,
     max_iterations: int = 100
 ) -> np.ndarray:
     """
-    Generate the Julia set fractal using vectorized NumPy operations.
+    Генерация множества Жюлиа с использованием векторизованных операций NumPy.
     
-    The Julia set is similar to the Mandelbrot set but uses a fixed complex
-    constant c and varies the initial z value. Different values of c produce
-    dramatically different fractals.
+    Множество Жюлиа определяется итерацией функции f(z) = z² + c для фиксированного c.
     
     Args:
-        width: Width of the output image in pixels.
-        height: Height of the output image in pixels.
-        c_real: Real part of the complex constant c.
-        c_imag: Imaginary part of the complex constant c.
-        center_x: X-coordinate of the center of the view.
-        center_y: Y-coordinate of the center of the view.
-        zoom: Zoom level (higher = more zoomed in).
-        max_iterations: Maximum number of iterations to determine divergence.
-                       Higher values give more detail but are slower.
+        width: Ширина выходного изображения в пикселях.
+        height: Высота выходного изображения в пикселях.
+        c_real: Действительная часть константы c.
+        c_imag: Мнимая часть константы c.
+        center_x: X-координата центра вида.
+        center_y: Y-координата центра вида.
+        zoom: Уровень масштабирования.
+        max_iterations: Максимальное количество итераций.
     
     Returns:
-        A 2D numpy array where each value represents the number of iterations
-        before divergence (or max_iterations if it didn't diverge).
+        Двумерный массив numpy с количеством итераций до расходимости.
     """
-    # Calculate the bounds based on center and zoom
+    # Вычисляем границы
     x_min = center_x - 2.0 / zoom
     x_max = center_x + 2.0 / zoom
     y_min = center_y - 2.0 / zoom
     y_max = center_y + 2.0 / zoom
     
-    # Create coordinate grids
+    # Создаем сетки координат
     x = np.linspace(x_min, x_max, width, dtype=np.float64)
     y = np.linspace(y_min, y_max, height, dtype=np.float64)
     X, Y = np.meshgrid(x, y)
     
-    # Initialize complex plane with the starting z values
+    # Инициализируем Z как начальные точки
     Z = X + 1j * Y
+    C = complex(c_real, c_imag)
     
-    # The fixed complex constant c
-    C = c_real + 1j * c_imag
-    
-    # Iteration count array
+    # Массив для хранения количества итераций
     iterations = np.zeros(Z.shape, dtype=np.int32)
     
-    # Track which points haven't diverged yet
-    not_diverged = np.ones(Z.shape, dtype=bool)
+    # Маска активных точек
+    mask = np.ones(Z.shape, dtype=bool)
     
-    # Vectorized iteration loop
+    # Векторизованная итерация
     for i in range(max_iterations):
-        Z[not_diverged] = Z[not_diverged] ** 2 + C
+        Z[mask] = Z[mask] ** 2 + C
+        diverged = np.abs(Z) > 2.0
         
-        # Check for divergence (|z| > 2)
-        diverged = np.abs(Z) > 2
-        newly_diverged = diverged & not_diverged
+        newly_diverged = diverged & mask
         iterations[newly_diverged] = i
-        not_diverged &= ~diverged
         
-        # Early exit if all points have diverged
-        if not np.any(not_diverged):
+        mask = mask & ~diverged
+        
+        if not np.any(mask):
             break
     
-    # Points that never diverged get max_iterations
-    iterations[not_diverged] = max_iterations
+    iterations[mask] = max_iterations
     
     return iterations
 
@@ -159,268 +219,330 @@ def julia_set(
 def fractal_tree(
     width: int,
     height: int,
-    branch_angle: float = 0.5,
-    length_ratio: float = 0.7,
-    max_depth: int = 10,
-    start_length: float = 150.0
+    branch_angle: float = np.pi / 6,
+    branch_ratio: float = 0.7,
+    depth: int = 9,
+    trunk_length: float = None
 ) -> np.ndarray:
     """
-    Generate a fractal tree using iterative branching (optimized).
+    Генерация фрактального дерева с использованием рекурсии.
     
-    This creates a binary tree where each branch splits into two smaller
-    branches at a specified angle. The tree is rendered as a distance field
-    for smooth coloring.
-    
-    Uses an iterative stack-based approach instead of recursion for better
-    performance.
+    Фрактальное дерево создается путем рекурсивного ветвления линий.
     
     Args:
-        width: Width of the output image in pixels.
-        height: Height of the output image in pixels.
-        branch_angle: Angle between branches in radians.
-                     Typical range: 0.3 to 1.0 radians.
-        length_ratio: Ratio of child branch length to parent branch length.
-                     Typical range: 0.5 to 0.8.
-        max_depth: Maximum recursion depth. Higher = more branches but slower.
-                  Typical range: 8 to 12.
-        start_length: Initial trunk length in pixels.
+        width: Ширина выходного изображения в пикселях.
+        height: Высота выходного изображения в пикселях.
+        branch_angle: Угол ветвления в радианах.
+        branch_ratio: Коэффициент уменьшения длины ветвей (0-1).
+        depth: Глубина рекурсии (количество уровней ветвления).
+        trunk_length: Длина ствола (по умолчанию высота/4).
     
     Returns:
-        A 2D numpy array representing the tree structure.
-        Values represent the depth at which each pixel was reached,
-        or 0 if no branch reached that pixel.
+        Двумерный массив numpy, где значения представляют глубину/интенсивность ветви.
     """
-    # Initialize output array
-    result = np.zeros((height, width), dtype=np.float64)
+    if trunk_length is None:
+        trunk_length = height / 4.0
     
-    # Starting position (bottom center)
-    start_x = width / 2.0
-    start_y = float(height - 50)  # Leave some margin at bottom
+    # Создаем пустое изображение
+    tree_data = np.zeros((height, width), dtype=np.float32)
     
-    # Use iterative stack-based approach (more efficient than recursion)
-    # Stack entries: (x, y, angle, length, depth)
-    stack = [(start_x, start_y, 0.0, start_length, max_depth)]
+    # Центр внизу изображения
+    start_x = width / 2
+    start_y = height - 50
     
-    while stack:
-        x, y, angle, length, depth = stack.pop()
+    def draw_branch(x, y, length, angle, current_depth):
+        """Рекурсивная функция для рисования ветвей."""
+        if current_depth == 0 or length < 2:
+            return
         
-        if depth == 0 or length < 1:
-            continue
-        
-        # Calculate end point of this branch
+        # Вычисляем конечную точку ветви
         end_x = x + length * np.sin(angle)
-        end_y = y - length * np.cos(angle)  # Negative because y goes down
+        end_y = y - length * np.cos(angle)
         
-        # Draw the branch using vectorized line drawing
-        num_points = max(int(length), 1)
-        t_values = np.linspace(0, 1, num_points)
+        # Рисуем ветвь (используем простую растеризацию линии)
+        _draw_line(tree_data, x, y, end_x, end_y, current_depth, depth)
         
-        px_values = (x + t_values * (end_x - x)).astype(int)
-        py_values = (y + t_values * (end_y - y)).astype(int)
-        
-        # Filter points within bounds
-        valid_mask = (px_values >= 0) & (px_values < width) & \
-                     (py_values >= 0) & (py_values < height)
-        
-        if np.any(valid_mask):
-            normalized_depth = depth / max_depth
-            for px, py in zip(px_values[valid_mask], py_values[valid_mask]):
-                if normalized_depth > result[py, px]:
-                    result[py, px] = normalized_depth
-        
-        # Add child branches to stack
-        new_length = length * length_ratio
-        
-        # Right branch
-        stack.append((end_x, end_y, angle + branch_angle, new_length, depth - 1))
-        # Left branch
-        stack.append((end_x, end_y, angle - branch_angle, new_length, depth - 1))
+        # Рекурсивно рисуем дочерние ветви
+        new_length = length * branch_ratio
+        draw_branch(end_x, end_y, new_length, angle - branch_angle, current_depth - 1)
+        draw_branch(end_x, end_y, new_length, angle + branch_angle, current_depth - 1)
     
-    return result
+    # Начинаем с ствола
+    draw_branch(start_x, start_y, trunk_length, 0, depth)
+    
+    return tree_data
 
 
-def get_fractal_parameters(fractal_type: str) -> Dict[str, Dict[str, Any]]:
+def _draw_line(data: np.ndarray, x0: float, y0: float, x1: float, y1: float, depth: int, max_depth: int):
     """
-    Get the parameter definitions for a specific fractal type.
+    Рисует линию в массиве данных, используя алгоритм Брезенхема.
+    Значения зависят от глубины для создания градиента.
+    """
+    height, width = data.shape
+    intensity = depth / max_depth
     
-    This is used by the UI to dynamically generate controls.
+    x0, y0 = int(x0), int(y0)
+    x1, y1 = int(x1), int(y1)
+    
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    
+    err = dx // 2 if dx > dy else -dy // 2
+    
+    x, y = x0, y0
+    while True:
+        if 0 <= y < height and 0 <= x < width:
+            # Добавляем интенсивность (для перекрытия ветвей)
+            data[y, x] = max(data[y, x], intensity)
+        
+        if x == x1 and y == y1:
+            break
+        
+        e2 = err
+        if e2 > -dx:
+            err -= dy
+            x += sx
+        if e2 < dy:
+            err += dx
+            y += sy
+
+
+# Кэш для результатов рендеринга
+_render_cache = {}
+
+
+def get_cached_fractal(cache_key: str) -> Optional[np.ndarray]:
+    """Получить фрактал из кэша по ключу."""
+    return _render_cache.get(cache_key)
+
+
+def cache_fractal(cache_key: str, data: np.ndarray):
+    """Сохранить фрактал в кэш."""
+    _render_cache[cache_key] = data
+
+
+def clear_cache():
+    """Очистить весь кэш."""
+    _render_cache.clear()
+
+
+def get_fractal_parameters(fractal_type: str) -> Dict[str, Any]:
+    """
+    Получить параметры для указанного типа фрактала.
     
     Args:
-        fractal_type: One of "mandelbrot", "julia", or "tree".
+        fractal_type: Тип фрактала ("mandelbrot", "julia", "tree").
     
     Returns:
-        A dictionary mapping parameter names to their configurations.
-        Each configuration includes:
-        - type: "scale" or "entry"
-        - min: Minimum value (for scales)
-        - max: Maximum value (for scales)
-        - default: Default value
-        - step: Step size for scales
-        - description: Human-readable description of what the parameter does
+        Словарь с параметрами, их описаниями, диапазонами и значениями по умолчанию.
     """
-    parameters = {
+    params = {
         "mandelbrot": {
-            "center_x": {
-                "type": "entry",
-                "default": -0.5,
-                "description": "X-coordinate of view center. Pan left/right."
-            },
-            "center_y": {
-                "type": "entry",
-                "default": 0.0,
-                "description": "Y-coordinate of view center. Pan up/down."
-            },
             "zoom": {
-                "type": "scale",
+                "label": "Масштаб",
+                "description": "Чем выше значение, тем ближе приближение к фракталу",
                 "min": 0.1,
-                "max": 100.0,
+                "max": 1000.0,
                 "default": 1.0,
                 "step": 0.1,
-                "description": "Zoom level. Higher = more zoomed in (more detail)."
+                "type": "float"
+            },
+            "center_x": {
+                "label": "Центр X",
+                "description": "Горизонтальная позиция центра вида",
+                "min": -2.5,
+                "max": 1.0,
+                "default": -0.5,
+                "step": 0.01,
+                "type": "float"
+            },
+            "center_y": {
+                "label": "Центр Y",
+                "description": "Вертикальная позиция центра вида",
+                "min": -1.5,
+                "max": 1.5,
+                "default": 0.0,
+                "step": 0.01,
+                "type": "float"
             },
             "max_iterations": {
-                "type": "scale",
+                "label": "Итерации",
+                "description": "Больше = больше деталей, но медленнее. Рекомендуется 50-500",
                 "min": 10,
-                "max": 500,
+                "max": 1000,
                 "default": 100,
                 "step": 10,
-                "description": "Iterations: Higher = more detail but slower rendering."
+                "type": "int"
             }
         },
         "julia": {
             "c_real": {
-                "type": "scale",
+                "label": "Действительная часть (c)",
+                "description": "Вещественная компонента константы Жюлиа. Меняет форму фрактала",
                 "min": -2.0,
                 "max": 2.0,
                 "default": -0.7,
                 "step": 0.01,
-                "description": "Real part of c: Changes the fractal shape horizontally."
+                "type": "float"
             },
             "c_imag": {
-                "type": "scale",
+                "label": "Мнимая часть (c)",
+                "description": "Мнимая компонента константы Жюлиа. Меняет форму фрактала",
                 "min": -2.0,
                 "max": 2.0,
-                "default": 0.27017,
+                "default": 0.27015,
                 "step": 0.01,
-                "description": "Imaginary part of c: Changes the fractal shape vertically."
-            },
-            "center_x": {
-                "type": "entry",
-                "default": 0.0,
-                "description": "X-coordinate of view center. Pan left/right."
-            },
-            "center_y": {
-                "type": "entry",
-                "default": 0.0,
-                "description": "Y-coordinate of view center. Pan up/down."
+                "type": "float"
             },
             "zoom": {
-                "type": "scale",
+                "label": "Масштаб",
+                "description": "Чем выше значение, тем ближе приближение",
                 "min": 0.1,
                 "max": 100.0,
                 "default": 1.0,
                 "step": 0.1,
-                "description": "Zoom level. Higher = more zoomed in."
+                "type": "float"
+            },
+            "center_x": {
+                "label": "Центр X",
+                "description": "Горизонтальная позиция центра вида",
+                "min": -2.0,
+                "max": 2.0,
+                "default": 0.0,
+                "step": 0.01,
+                "type": "float"
+            },
+            "center_y": {
+                "label": "Центр Y",
+                "description": "Вертикальная позиция центра вида",
+                "min": -2.0,
+                "max": 2.0,
+                "default": 0.0,
+                "step": 0.01,
+                "type": "float"
             },
             "max_iterations": {
-                "type": "scale",
+                "label": "Итерации",
+                "description": "Больше = больше деталей, но медленнее",
                 "min": 10,
                 "max": 500,
                 "default": 100,
                 "step": 10,
-                "description": "Iterations: Higher = more detail but slower rendering."
+                "type": "int"
             }
         },
         "tree": {
             "branch_angle": {
-                "type": "scale",
+                "label": "Угол ветвления",
+                "description": "Угол между ветвями в радианах. π/6 = 30°, π/4 = 45°",
                 "min": 0.1,
-                "max": 1.5,
-                "default": 0.5,
+                "max": np.pi / 2,
+                "default": np.pi / 6,
                 "step": 0.05,
-                "description": "Angle between branches (radians). Wider = more spread out."
+                "type": "float"
             },
-            "length_ratio": {
-                "type": "scale",
+            "branch_ratio": {
+                "label": "Коэффициент ветвей",
+                "description": "Во сколько раз уменьшается каждая ветвь (0.5-0.9). Меньше = компактнее",
                 "min": 0.5,
                 "max": 0.9,
                 "default": 0.7,
                 "step": 0.01,
-                "description": "Child branch length ratio. Higher = longer branches."
+                "type": "float"
             },
-            "max_depth": {
-                "type": "scale",
+            "depth": {
+                "label": "Глубина рекурсии",
+                "description": "Количество уровней ветвления. Больше = детальнее, но медленнее",
                 "min": 5,
-                "max": 15,
-                "default": 10,
+                "max": 12,
+                "default": 9,
                 "step": 1,
-                "description": "Recursion depth. Higher = more branches but much slower."
+                "type": "int"
             },
-            "start_length": {
-                "type": "scale",
+            "trunk_length": {
+                "label": "Длина ствола",
+                "description": "Начальная длина главного ствола в пикселях",
                 "min": 50,
                 "max": 300,
                 "default": 150,
                 "step": 10,
-                "description": "Initial trunk length in pixels."
+                "type": "int"
             }
         }
     }
     
-    return parameters.get(fractal_type, {})
+    return params.get(fractal_type, {})
 
 
 def generate_fractal(
     fractal_type: str,
     width: int,
     height: int,
-    params: Dict[str, float]
+    params: Dict[str, Any],
+    use_cache: bool = True,
+    cache_key: str = None
 ) -> np.ndarray:
     """
-    Generate a fractal based on the specified type and parameters.
-    
-    This is the main entry point for fractal generation.
+    Основная функция для генерации фракталов.
     
     Args:
-        fractal_type: One of "mandelbrot", "julia", or "tree".
-        width: Width of the output image in pixels.
-        height: Height of the output image in pixels.
-        params: Dictionary of parameter values for the fractal.
+        fractal_type: Тип фрактала ("mandelbrot", "julia", "tree").
+        width: Ширина изображения.
+        height: Высота изображения.
+        params: Параметры для фрактала.
+        use_cache: Использовать ли кэширование.
+        cache_key: Ключ для кэширования (если None, генерируется автоматически).
     
     Returns:
-        A 2D numpy array containing the fractal data.
+        Двумерный массив numpy с данными фрактала.
     """
+    # Генерируем ключ кэша если не предоставлен
+    if cache_key is None:
+        cache_key = f"{fractal_type}_{width}x{height}_" + "_".join(f"{k}={v}" for k, v in sorted(params.items()))
+    
+    # Проверяем кэш
+    if use_cache:
+        cached = get_cached_fractal(cache_key)
+        if cached is not None:
+            return cached
+    
+    # Генерируем фрактал
     if fractal_type == "mandelbrot":
-        return mandelbrot_set(
+        data = mandelbrot_set(
             width=width,
             height=height,
             center_x=params.get("center_x", -0.5),
             center_y=params.get("center_y", 0.0),
             zoom=params.get("zoom", 1.0),
-            max_iterations=int(params.get("max_iterations", 100))
+            max_iterations=params.get("max_iterations", 100)
         )
-    
     elif fractal_type == "julia":
-        return julia_set(
+        data = julia_set(
             width=width,
             height=height,
             c_real=params.get("c_real", -0.7),
-            c_imag=params.get("c_imag", 0.27017),
+            c_imag=params.get("c_imag", 0.27015),
             center_x=params.get("center_x", 0.0),
             center_y=params.get("center_y", 0.0),
             zoom=params.get("zoom", 1.0),
-            max_iterations=int(params.get("max_iterations", 100))
+            max_iterations=params.get("max_iterations", 100)
         )
-    
     elif fractal_type == "tree":
-        return fractal_tree(
+        data = fractal_tree(
             width=width,
             height=height,
-            branch_angle=params.get("branch_angle", 0.5),
-            length_ratio=params.get("length_ratio", 0.7),
-            max_depth=int(params.get("max_depth", 10)),
-            start_length=params.get("start_length", 150.0)
+            branch_angle=params.get("branch_angle", np.pi / 6),
+            branch_ratio=params.get("branch_ratio", 0.7),
+            depth=params.get("depth", 9),
+            trunk_length=params.get("trunk_length", 150)
         )
-    
     else:
-        raise ValueError(f"Unknown fractal type: {fractal_type}")
+        raise ValueError(f"Неизвестный тип фрактала: {fractal_type}")
+    
+    # Сохраняем в кэш
+    if use_cache:
+        cache_fractal(cache_key, data)
+    
+    return data

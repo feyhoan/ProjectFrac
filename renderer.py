@@ -1,403 +1,257 @@
 """
-renderer.py - Logic for converting data arrays into images.
+renderer.py - Логика для преобразования массивов данных в изображения.
 
-This module handles:
-- Converting fractal data arrays to RGB images using Pillow/PIL
-- Applying color palettes (Classic, Fire, Ocean, Forest, Purple Haze)
-- Generating preview images for the main menu
-- Caching rendered fractals for instant background color changes
+Этот модуль содержит функции для:
+- Применения цветовых палитр к данным фракталов
+- Создания изображений PIL из numpy массивов
+- Генерации предварительных изображений для меню
+- Композитинга с цветом фона
 """
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from typing import Tuple, Dict, List, Optional
+from typing import Tuple, Dict, Any, Optional
 import hashlib
-import threading
 
 
-# Color palettes mapping iteration values to RGB colors
-# Each palette is a list of (position, R, G, B) tuples where position is 0.0 to 1.0
+# Цветовые палитры (список кортежей RGB)
 COLOR_PALETTES = {
-    "Classic": [
-        (0.0, 0, 0, 0),
-        (0.2, 0, 0, 50),
-        (0.4, 0, 50, 100),
-        (0.6, 50, 100, 150),
-        (0.8, 150, 200, 255),
-        (1.0, 255, 255, 255)
+    "Классическая": [
+        (0, 0, 0),      # Черный (для множества Мандельброта)
+        (25, 25, 112),  # Темно-синий
+        (0, 128, 255),  # Голубой
+        (0, 255, 255),  # Циан
+        (255, 255, 0),  # Желтый
+        (255, 165, 0),  # Оранжевый
+        (255, 0, 0),    # Красный
+        (255, 255, 255) # Белый
     ],
-    "Fire": [
-        (0.0, 0, 0, 0),
-        (0.2, 50, 0, 0),
-        (0.4, 150, 50, 0),
-        (0.6, 200, 100, 0),
-        (0.8, 255, 200, 50),
-        (1.0, 255, 255, 200)
+    "Огонь": [
+        (0, 0, 0),
+        (139, 0, 0),    # Темно-красный
+        (255, 69, 0),   # Огненно-красный
+        (255, 140, 0),  # Оранжевый
+        (255, 215, 0),  # Золотой
+        (255, 255, 0),  # Желтый
+        (255, 255, 255) # Белый
     ],
-    "Ocean": [
-        (0.0, 0, 0, 20),
-        (0.2, 0, 20, 50),
-        (0.4, 0, 50, 100),
-        (0.6, 0, 100, 150),
-        (0.8, 50, 150, 200),
-        (1.0, 150, 200, 255)
+    "Океан": [
+        (0, 0, 0),
+        (0, 0, 50),     # Очень темный синий
+        (0, 0, 100),    # Темный синий
+        (0, 100, 150),  # Синий
+        (0, 150, 200),  # Светло-синий
+        (0, 200, 255),  # Голубой
+        (100, 255, 255) # Светлый циан
     ],
-    "Forest": [
-        (0.0, 0, 0, 0),
-        (0.2, 0, 30, 0),
-        (0.4, 0, 80, 20),
-        (0.6, 20, 120, 50),
-        (0.8, 50, 180, 80),
-        (1.0, 100, 220, 120)
+    "Лес": [
+        (0, 0, 0),
+        (0, 50, 0),     # Темно-зеленый
+        (0, 100, 0),    # Зеленый
+        (0, 150, 50),   # Средний зеленый
+        (50, 200, 50),  # Светло-зеленый
+        (100, 255, 100) # Яркий зеленый
     ],
-    "Purple Haze": [
-        (0.0, 0, 0, 0),
-        (0.2, 30, 0, 50),
-        (0.4, 80, 20, 120),
-        (0.6, 120, 50, 180),
-        (0.8, 180, 100, 220),
-        (1.0, 220, 180, 255)
+    "Фиолетовая дымка": [
+        (0, 0, 0),
+        (75, 0, 75),    # Темно-фиолетовый
+        (128, 0, 128),  # Фиолетовый
+        (180, 50, 180), # Светло-фиолетовый
+        (220, 100, 220) # Розово-фиолетовый
     ]
 }
 
 
-# Global cache for rendered fractals
-# Key: hash of (fractal_type, params_tuple, width, height, palette)
-# Value: tuple of (fractal_data_array, colored_image_without_bg)
-_fractal_cache: Dict[str, Tuple[np.ndarray, Image.Image]] = {}
-_cache_lock = threading.Lock()
-
-
-def _generate_cache_key(fractal_type: str, params: dict, width: int, height: int, 
-                        palette_name: str) -> str:
-    """Generate a unique cache key based on fractal parameters."""
-    # Sort params for consistent ordering
-    params_tuple = tuple(sorted(params.items()))
-    key_string = f"{fractal_type}|{params_tuple}|{width}|{height}|{palette_name}"
-    return hashlib.md5(key_string.encode()).hexdigest()
-
-
-def interpolate_color(
-    t: float, 
-    palette: List[Tuple[float, int, int, int]]
-) -> Tuple[int, int, int]:
-    """
-    Interpolate between colors in a palette based on a normalized value.
-    
-    Args:
-        t: Normalized value between 0.0 and 1.0.
-        palette: List of (position, R, G, B) tuples sorted by position.
-    
-    Returns:
-        A tuple of (R, G, B) values.
-    """
-    # Clamp t to valid range
+def interpolate_color(color1: Tuple[int, int, int], color2: Tuple[int, int, int], t: float) -> Tuple[int, int, int]:
+    """Интерполирует между двумя цветами."""
     t = max(0.0, min(1.0, t))
-    
-    # Find the two palette entries to interpolate between
-    for i in range(len(palette) - 1):
-        pos1, r1, g1, b1 = palette[i]
-        pos2, r2, g2, b2 = palette[i + 1]
-        
-        if pos1 <= t <= pos2:
-            # Calculate interpolation factor
-            if pos2 == pos1:
-                factor = 0.0
-            else:
-                factor = (t - pos1) / (pos2 - pos1)
-            
-            # Interpolate each channel
-            r = int(r1 + factor * (r2 - r1))
-            g = int(g1 + factor * (g2 - g1))
-            b = int(b1 + factor * (b2 - b1))
-            
-            return (r, g, b)
-    
-    # Fallback: return last color
-    _, r, g, b = palette[-1]
+    r = int(color1[0] + (color2[0] - color1[0]) * t)
+    g = int(color1[1] + (color2[1] - color1[1]) * t)
+    b = int(color1[2] + (color2[2] - color1[2]) * t)
     return (r, g, b)
 
 
-def apply_colormap(
-    data: np.ndarray, 
-    palette_name: str = "Classic",
-    normalize: bool = True
-) -> np.ndarray:
-    """
-    Apply a color palette to fractal data using vectorized NumPy operations.
-    
-    Args:
-        data: 2D numpy array with iteration counts or similar values.
-        palette_name: Name of the color palette to use.
-        normalize: If True, normalize data to 0-1 range based on max value.
-    
-    Returns:
-        A 3D numpy array of shape (height, width, 3) with RGB values.
-    """
-    # Get the palette
-    palette = COLOR_PALETTES.get(palette_name, COLOR_PALETTES["Classic"])
-    
-    # Normalize data if needed
-    if normalize:
-        max_val = np.max(data)
-        if max_val > 0:
-            normalized_data = data / max_val
-        else:
-            normalized_data = data.copy()
-    else:
-        normalized_data = data.copy()
-    
-    # Create output array
+def apply_colormap(data: np.ndarray, palette_name: str = "Классическая") -> np.ndarray:
+    """Применяет цветовую палитру к данным фрактала."""
+    palette = COLOR_PALETTES.get(palette_name, COLOR_PALETTES["Классическая"])
     height, width = data.shape
     result = np.zeros((height, width, 3), dtype=np.uint8)
     
-    # Vectorized color interpolation
-    # For each pixel, find which palette segment it falls into and interpolate
-    for i in range(len(palette) - 1):
-        pos1, r1, g1, b1 = palette[i]
-        pos2, r2, g2, b2 = palette[i + 1]
-        
-        # Find pixels in this segment
-        if i == len(palette) - 2:
-            # Last segment includes the upper bound
-            mask = (normalized_data >= pos1) & (normalized_data <= pos2)
-        else:
-            mask = (normalized_data >= pos1) & (normalized_data < pos2)
-        
-        if np.any(mask):
-            # Calculate interpolation factor for these pixels
-            if pos2 == pos1:
-                factor = np.zeros_like(normalized_data)
-            else:
-                factor = (normalized_data - pos1) / (pos2 - pos1)
-            
-            # Interpolate each channel (vectorized)
-            result[mask, 0] = np.clip(r1 + factor[mask] * (r2 - r1), 0, 255).astype(np.uint8)
-            result[mask, 1] = np.clip(g1 + factor[mask] * (g2 - g1), 0, 255).astype(np.uint8)
-            result[mask, 2] = np.clip(b1 + factor[mask] * (b2 - b1), 0, 255).astype(np.uint8)
+    min_val = np.min(data)
+    max_val = np.max(data)
+    
+    if max_val == min_val:
+        color = palette[len(palette) // 2]
+        result[:, :] = color
+        return result
+    
+    num_segments = len(palette) - 1
+    norm_data = (data - min_val) / (max_val - min_val) if max_val > min_val else data
+    
+    for i in range(height):
+        for j in range(width):
+            norm_val = norm_data[i, j]
+            palette_idx = norm_val * num_segments
+            idx_low = int(palette_idx)
+            idx_high = min(idx_low + 1, len(palette) - 1)
+            t = palette_idx - idx_low
+            color = interpolate_color(palette[idx_low], palette[idx_high], t)
+            result[i, j] = color
     
     return result
 
 
 def data_to_image(
     data: np.ndarray,
-    palette_name: str = "Classic",
-    background_color: Optional[Tuple[int, int, int]] = None,
-    fill_background: bool = True
+    palette_name: str = "Классическая",
+    background_color: Tuple[int, int, int] = None,
+    fractal_type: str = "mandelbrot"
 ) -> Image.Image:
-    """
-    Convert fractal data to a PIL Image with proper background handling.
+    """Преобразует массив данных в изображение PIL."""
+    if background_color is None:
+        background_color = (0, 0, 0)
     
-    Args:
-        data: 2D numpy array with fractal data.
-        palette_name: Name of the color palette to use.
-        background_color: Optional RGB tuple for background color.
-                         If None, uses the palette's first color for zero values.
-        fill_background: If True, fill ALL zero-value pixels with background color.
-                        This ensures the entire canvas has the background color.
-    
-    Returns:
-        A PIL Image object.
-    """
-    # Apply colormap
     rgb_data = apply_colormap(data, palette_name)
     
-    # Handle background color for zero values (fractal boundary/exterior)
-    if fill_background:
-        # Create mask for all zero-value pixels
-        mask = data == 0
+    if fractal_type == "tree":
+        alpha = np.zeros(data.shape, dtype=np.uint8)
+        mask = data > 0
+        alpha[mask] = 255
         
-        if background_color is not None:
-            # Apply custom background color to all zero pixels
-            rgb_data[mask] = background_color
-        else:
-            # Use default black background for zero pixels
-            rgb_data[mask] = [0, 0, 0]
-    
-    # Create PIL image
-    image = Image.fromarray(rgb_data, mode='RGB')
-    
-    return image
+        rgba_data = np.zeros((data.shape[0], data.shape[1], 4), dtype=np.uint8)
+        rgba_data[:, :, :3] = rgb_data
+        rgba_data[:, :, 3] = alpha
+        
+        img = Image.fromarray(rgba_data, mode='RGBA')
+        background = Image.new('RGBA', img.size, background_color + (255,))
+        background.paste(img, (0, 0), img)
+        return background.convert('RGB')
+    else:
+        img = Image.fromarray(rgb_data, mode='RGB')
+        
+        if background_color != (0, 0, 0):
+            bg_img = Image.new('RGB', img.size, background_color)
+            data_array = np.array(img)
+            not_black = np.any(data_array > 10, axis=2)
+            mask = Image.fromarray(not_black.astype(np.uint8) * 255, mode='L')
+            bg_img.paste(img, (0, 0), mask)
+            img = bg_img
+        
+        return img
 
 
-def generate_preview_image(
-    fractal_type: str,
-    params: dict,
-    width: int = 200,
-    height: int = 150,
-    palette_name: str = "Classic"
-) -> Image.Image:
-    """
-    Generate a low-resolution preview image for a fractal.
-    Used for main menu cards.
-    
-    Args:
-        fractal_type: Type of fractal ("mandelbrot", "julia", or "tree").
-        params: Dictionary of parameters for the fractal.
-        width: Width of the preview image.
-        height: Height of the preview image.
-        palette_name: Color palette to use.
-    
-    Returns:
-        A PIL Image object with the rendered preview.
-    """
+def create_preview_image(fractal_type: str, params: Dict[str, Any], width: int = 200, height: int = 150) -> Image.Image:
+    """Создает предварительное изображение для карточки фрактала."""
     from core import generate_fractal
     
-    # Generate fractal data at low resolution
-    data = generate_fractal(fractal_type, width, height, params)
+    render_params = params.copy()
+    if "max_iterations" in render_params:
+        render_params["max_iterations"] = min(render_params["max_iterations"], 50)
+    if "depth" in render_params:
+        render_params["depth"] = min(render_params.get("depth", 9), 8)
     
-    # Convert to image
-    image = data_to_image(data, palette_name, fill_background=True)
-    
-    return image
-
-
-def create_placeholder_image(
-    text: str,
-    width: int = 200,
-    height: int = 120,
-    bg_color: Tuple[int, int, int] = (60, 60, 70),
-    text_color: Tuple[int, int, int] = (255, 255, 255)
-) -> Image.Image:
-    """
-    Create a placeholder image with text for the main menu cards.
-    
-    Args:
-        text: Text to display on the placeholder.
-        width: Width of the image in pixels.
-        height: Height of the image in pixels.
-        bg_color: Background color as RGB tuple.
-        text_color: Text color as RGB tuple.
-    
-    Returns:
-        A PIL Image object.
-    """
-    # Create image with solid background
-    image = Image.new('RGB', (width, height), color=bg_color)
-    draw = ImageDraw.Draw(image)
-    
-    # Try to use a default font, fall back to bitmap font if not available
     try:
-        # Try common system fonts
-        font = ImageFont.truetype("DejaVuSans.ttf", 20)
-    except IOError:
-        try:
-            font = ImageFont.truetype("arial.ttf", 20)
-        except IOError:
-            # Fall back to default bitmap font
-            font = ImageFont.load_default()
+        data = generate_fractal(fractal_type, width, height, render_params, use_cache=False)
+        palette_map = {"mandelbrot": "Океан", "julia": "Огонь", "tree": "Лес"}
+        palette = palette_map.get(fractal_type, "Классическая")
+        img = data_to_image(data, palette_name=palette, background_color=(30, 30, 40), fractal_type=fractal_type)
+        return img
+    except Exception as e:
+        print(f"Ошибка при создании превью: {e}")
+        return create_placeholder_image(fractal_type, width, height)
+
+
+def create_placeholder_image(name: str, width: int = 200, height: int = 150) -> Image.Image:
+    """Создает изображение-заглушку с текстом."""
+    img = Image.new('RGB', (width, height), color=(50, 50, 70))
+    draw = ImageDraw.Draw(img)
     
-    # Get text bounding box and center it
-    bbox = draw.textbbox((0, 0), text, font=font)
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+    except:
+        font = ImageFont.load_default()
+    
+    bbox = draw.textbbox((0, 0), name, font=font)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
-    
     x = (width - text_width) // 2
     y = (height - text_height) // 2
+    draw.text((x, y), name, fill=(255, 255, 255), font=font)
     
-    # Draw text
-    draw.text((x, y), text, fill=text_color, font=font)
-    
-    # Add a decorative border
-    draw.rectangle([0, 0, width - 1, height - 1], outline=(100, 100, 120), width=2)
-    
-    return image
+    return img
 
 
-def get_available_palettes() -> List[str]:
-    """
-    Get a list of available color palette names.
-    
-    Returns:
-        List of palette name strings.
-    """
-    return list(COLOR_PALETTES.keys())
+# Кэш для рендеринга
+_render_cache = {}
+_fractal_data_cache = {}
+
+
+def get_cached_image(cache_key: str) -> Optional[Image.Image]:
+    return _render_cache.get(cache_key)
+
+
+def cache_image(cache_key: str, img: Image.Image):
+    _render_cache[cache_key] = img
+
+
+def get_cached_fractal_data(cache_key: str) -> Optional[np.ndarray]:
+    return _fractal_data_cache.get(cache_key)
+
+
+def cache_fractal_data(cache_key: str, data: np.ndarray):
+    _fractal_data_cache[cache_key] = data
+
+
+def clear_all_caches():
+    _render_cache.clear()
+    _fractal_data_cache.clear()
+
+
+def generate_cache_key(fractal_type: str, params: Dict[str, Any], width: int, height: int) -> str:
+    param_str = "_".join(f"{k}={v:.6f}" if isinstance(v, float) else f"{k}={v}" 
+                         for k, v in sorted(params.items()))
+    base_str = f"{fractal_type}_{width}x{height}_{param_str}"
+    return hashlib.md5(base_str.encode()).hexdigest()[:16]
 
 
 def render_fractal(
     fractal_type: str,
-    params: dict,
-    width: int,
-    height: int,
-    palette_name: str = "Classic",
-    background_color: Optional[Tuple[int, int, int]] = None,
-    use_cache: bool = True
-) -> Image.Image:
-    """
-    Complete rendering pipeline: generate fractal data and convert to image.
-    
-    Implements caching for faster re-renders when only background color changes.
-
-    This is the main entry point for rendering fractals.
-
-    Args:
-        fractal_type: Type of fractal ("mandelbrot", "julia", or "tree").
-        params: Dictionary of parameters for the fractal.
-        width: Width of the output image in pixels.
-        height: Height of the output image in pixels.
-        palette_name: Name of the color palette to use.
-        background_color: Optional RGB tuple for background color.
-        use_cache: If True, use cached fractal data when available.
-
-    Returns:
-        A PIL Image object containing the rendered fractal.
-    """
-    # Import here to avoid circular imports
+    params: Dict[str, Any],
+    width: int = 800,
+    height: int = 600,
+    palette_name: str = "Классическая",
+    background_color: Tuple[int, int, int] = None,
+    use_cache: bool = True,
+    cached_fractal_data: np.ndarray = None
+) -> Tuple[Image.Image, np.ndarray]:
+    """Полный цикл рендеринга фрактала."""
     from core import generate_fractal
     
-    if use_cache:
-        # Generate cache key (without background_color since we handle that separately)
-        cache_key = _generate_cache_key(fractal_type, params, width, height, palette_name)
-        
-        with _cache_lock:
-            if cache_key in _fractal_cache:
-                # Cache hit! Get the colored image without background
-                data, base_image = _fractal_cache[cache_key]
-                
-                # Apply background color instantly (no re-calculation needed)
-                if background_color is not None:
-                    # Create a copy and apply background
-                    rgb_array = np.array(base_image)
-                    # Find zero-value pixels in original data
-                    mask = data == 0
-                    rgb_array[mask] = background_color
-                    return Image.fromarray(rgb_array, mode='RGB')
-                else:
-                    # Return cached image as-is (black background)
-                    return base_image.copy()
+    if background_color is None:
+        background_color = (0, 0, 0)
     
-    # Cache miss or cache disabled - full render
-    # Generate the fractal data
-    data = generate_fractal(fractal_type, width, height, params)
+    cache_key = generate_cache_key(fractal_type, params, width, height)
+    data_cache_key = f"data_{cache_key}"
     
-    # Convert to image with black background first
-    base_image = data_to_image(data, palette_name, background_color=None, fill_background=True)
-    
-    # Apply custom background color if specified
-    if background_color is not None:
-        rgb_array = np.array(base_image)
-        mask = data == 0
-        rgb_array[mask] = background_color
-        final_image = Image.fromarray(rgb_array, mode='RGB')
+    if cached_fractal_data is not None:
+        data = cached_fractal_data
+    elif use_cache:
+        data = get_cached_fractal_data(data_cache_key)
+        if data is None:
+            data = generate_fractal(fractal_type, width, height, params, use_cache=True)
+            cache_fractal_data(data_cache_key, data)
     else:
-        final_image = base_image
+        data = generate_fractal(fractal_type, width, height, params, use_cache=False)
     
-    # Cache the result (store both raw data and colored image)
+    img_cache_key = f"{cache_key}_{palette_name}_{background_color}"
     if use_cache:
-        with _cache_lock:
-            # Limit cache size to prevent memory issues
-            if len(_fractal_cache) > 10:
-                # Remove oldest entry
-                oldest_key = next(iter(_fractal_cache))
-                del _fractal_cache[oldest_key]
-            
-            _fractal_cache[cache_key] = (data, base_image)
+        cached_img = get_cached_image(img_cache_key)
+        if cached_img is not None:
+            return cached_img, data
     
-    return final_image
-
-
-def clear_cache():
-    """Clear the fractal cache. Call this when switching fractal types."""
-    global _fractal_cache
-    with _cache_lock:
-        _fractal_cache = {}
+    img = data_to_image(data, palette_name, background_color, fractal_type)
+    
+    if use_cache:
+        cache_image(img_cache_key, img)
+    
+    return img, data

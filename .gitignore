@@ -1,9 +1,35 @@
 ```
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+*.pyd
+*.py~
+*.py.class
+*.py.backup
+*.swp
+*.swo
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Dependencies
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.tmp
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -21,12 +47,12 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv/
-.env/
+# Pytest
+.pytest_cache/
+pytestdebug.log
+
+# Mypy
+.mypy_cache/
 
 # IDE
 .vscode/
@@ -34,21 +60,18 @@ ENV/
 *.swp
 *.swo
 
-# Logs
-*.log
-
 # Environment variables
 .env
 .env.local
-*.env.*
+*.env
+*.env~
 
-# Coverage
-.coverage
-htmlcov/
-.coverage.*
-
-# Temporary files
-*.tmp
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 ```
