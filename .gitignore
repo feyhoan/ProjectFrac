@@ -1,4 +1,1 @@
-```
-__pycache__/
-*.pyc
-```
+Nothing should be ignored based on the provided file changes. The modified files (`core.py` and `ui.py`) are source code files that should not be added to `.gitignore`. Since there are no build artifacts, dependencies, or temporary files in the changes, no additional ignore rules are needed.
