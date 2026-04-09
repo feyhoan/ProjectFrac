@@ -24,7 +24,7 @@ class FractalApp:
     def __init__(self):
         """Initialize the application."""
         self.root = tk.Tk()
-        self.root.title("Fractal Visualizer")
+        self.root.title("Визуализатор фракталов")
         self.root.geometry("1200x800")
         
         # Set modern style
@@ -126,14 +126,14 @@ class FractalApp:
         # Title
         title_label = ttk.Label(
             main_frame,
-            text="🎨 Fractal Visualizer",
+            text="🎨 Визуализатор фракталов",
             style="Title.TLabel"
         )
         title_label.pack(pady=(0, 10))
         
         subtitle_label = ttk.Label(
             main_frame,
-            text="Select a fractal type to begin exploring",
+            text="Выберите тип фрактала для начала исследования",
             style="Description.TLabel"
         )
         subtitle_label.pack(pady=(0, 40))
@@ -144,9 +144,9 @@ class FractalApp:
         
         # Create three fractal cards
         fractals = [
-            ("Mandelbrot Set", "mandelbrot", "#e94560"),
-            ("Julia Set", "julia", "#0f3460"),
-            ("Fractal Tree", "tree", "#533483")
+            ("Множество Мандельброта", "mandelbrot", "#e94560"),
+            ("Множество Жюлиа", "julia", "#0f3460"),
+            ("Фрактальное дерево", "tree", "#533483")
         ]
         
         for name, fractal_type, card_color in fractals:
@@ -204,9 +204,9 @@ class FractalApp:
         
         # Description
         descriptions = {
-            "Mandelbrot Set": "The most famous fractal.\nInfinite complexity at every scale.",
-            "Julia Set": "Related to Mandelbrot.\nVary the constant c for different shapes.",
-            "Fractal Tree": "Recursive branching pattern.\nNature-inspired mathematical beauty."
+            "Множество Мандельброта": "Самый известный фрактал.\nБесконечная сложность в каждом масштабе.",
+            "Множество Жюлиа": "Связано с множеством Мандельброта.\nИзменяйте константу c для разных форм.",
+            "Фрактальное дерево": "Рекурсивный ветвящийся узор.\nПриродная математическая красота."
         }
         
         desc_label = tk.Label(
@@ -296,7 +296,7 @@ class FractalApp:
         # Title
         title = ttk.Label(
             self.controls_frame,
-            text=f"{self.current_fractal_type.title()} Controls",
+            text=f"Управление: {self.current_fractal_type.title()}",
             style="Title.TLabel"
         )
         title.pack(pady=(20, 10), padx=15)
@@ -304,7 +304,7 @@ class FractalApp:
         # Parameters section
         params_frame = ttk.LabelFrame(
             self.controls_frame,
-            text="Parameters",
+            text="Параметры",
             padding=10
         )
         params_frame.pack(fill=tk.X, padx=15, pady=10)
@@ -315,7 +315,7 @@ class FractalApp:
         # Color settings section
         color_frame = ttk.LabelFrame(
             self.controls_frame,
-            text="Color Settings",
+            text="Настройки цвета",
             padding=10
         )
         color_frame.pack(fill=tk.X, padx=15, pady=10)
@@ -328,7 +328,7 @@ class FractalApp:
         
         self.render_button = tk.Button(
             button_frame,
-            text="RENDER",
+            text="ОТОБРАЗИТЬ",
             font=("Segoe UI", 14, "bold"),
             bg=self.colors["button_bg"],
             fg=self.colors["button_fg"],
@@ -343,7 +343,7 @@ class FractalApp:
         # Back button
         back_button = tk.Button(
             button_frame,
-            text="← Back to Menu",
+            text="← Назад в меню",
             font=("Segoe UI", 10),
             bg=self.colors["bg_light"],
             fg=self.colors["text_primary"],
@@ -384,7 +384,7 @@ class FractalApp:
             if config["type"] == "scale":
                 range_label = ttk.Label(
                     param_frame,
-                    text=f"Range: {config['min']} - {config['max']}",
+                    text=f"Диапазон: {config['min']} - {config['max']}",
                     style="Description.TLabel"
                 )
                 range_label.pack(anchor=tk.W)
@@ -463,7 +463,7 @@ class FractalApp:
         
         ttk.Label(
             palette_frame,
-            text="Color Palette:",
+            text="Цветовая палитра:",
             style="TLabel"
         ).pack(anchor=tk.W)
         
@@ -485,13 +485,13 @@ class FractalApp:
         
         ttk.Label(
             bg_frame,
-            text="Background Color:",
+            text="Цвет фона:",
             style="TLabel"
         ).pack(anchor=tk.W)
         
         bg_button = tk.Button(
             bg_frame,
-            text="Choose Background Color",
+            text="Выбрать цвет фона",
             font=("Segoe UI", 9),
             bg=self.colors["bg_medium"],
             fg=self.colors["text_primary"],
@@ -504,7 +504,7 @@ class FractalApp:
         # Reset background button
         reset_bg_button = tk.Button(
             bg_frame,
-            text="Reset to Default",
+            text="Сбросить по умолчанию",
             font=("Segoe UI", 8),
             bg=self.colors["bg_light"],
             fg=self.colors["text_secondary"],
@@ -542,7 +542,7 @@ class FractalApp:
     def _choose_background_color(self):
         """Open color chooser for background color."""
         color = colorchooser.askcolor(
-            title="Choose Background Color",
+            title="Выберите цвет фона",
             parent=self.root
         )
         if color[0]:  # RGB tuple
@@ -555,14 +555,14 @@ class FractalApp:
     def start_rendering(self):
         """Start the rendering process in a background thread."""
         # Disable button and show loading animation
-        self.render_button.config(state=tk.DISABLED, text="Rendering... |")
+        self.render_button.config(state=tk.DISABLED, text="Обработка... |")
         self.render_animation_frame = 0
         self.render_animation_chars = ["|", "/", "-", "\\"]
         
         def animate_button():
             if self.render_button.cget("state") == tk.DISABLED:
                 char = self.render_animation_chars[self.render_animation_frame % 4]
-                self.render_button.config(text=f"Rendering... {char}")
+                self.render_button.config(text=f"Обработка... {char}")
                 self.render_animation_frame += 1
                 self.root.after(150, animate_button)
         
@@ -614,7 +614,7 @@ class FractalApp:
         self.canvas.create_image(0, 0, anchor=tk.NW, image=photo)
         
         # Reset button
-        self.render_button.config(state=tk.NORMAL, text="RENDER")
+        self.render_button.config(state=tk.NORMAL, text="ОТОБРАЗИТЬ")
     
     def _render_error(self, error_msg: str):
         """Handle rendering errors."""
@@ -625,14 +625,14 @@ class FractalApp:
         self.canvas.create_text(
             self.canvas.winfo_width() / 2,
             self.canvas.winfo_height() / 2,
-            text=f"Error:\n{error_msg}",
+            text=f"Ошибка:\n{error_msg}",
             fill="red",
             font=("Segoe UI", 14),
             justify=tk.CENTER
         )
         
         # Reset button
-        self.render_button.config(state=tk.NORMAL, text="RENDER")
+        self.render_button.config(state=tk.NORMAL, text="ОТОБРАЗИТЬ")
     
     def run(self):
         """Start the application main loop."""

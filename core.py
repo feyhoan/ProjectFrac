@@ -265,117 +265,114 @@ def get_fractal_parameters(fractal_type: str) -> Dict[str, Dict[str, Any]]:
         - step: Step size for scales
         - description: Human-readable description of what the parameter does
     """
-    parameters = {
-        "mandelbrot": {
-            "center_x": {
-                "type": "entry",
-                "default": -0.5,
-                "description": "X-coordinate of view center. Pan left/right."
+        parameters = {
+            "mandelbrot": {
+                "center_x": {
+                    "type": "entry",
+                    "default": -0.5,
+                    "description": "Координата X центра вида. Перемещение влево/вправо."
+                },
+                "center_y": {
+                    "type": "entry",
+                    "default": 0.0,
+                    "description": "Координата Y центра вида. Перемещение вверх/вниз."
+                },
+                "zoom": {
+                    "type": "scale",
+                    "min": 0.1,
+                    "max": 100.0,
+                    "default": 1.0,
+                    "step": 0.1,
+                    "description": "Уровень масштабирования. Больше = ближе (больше деталей)."
+                },
+                "max_iterations": {
+                    "type": "scale",
+                    "min": 10,
+                    "max": 500,
+                    "default": 100,
+                    "step": 10,
+                    "description": "Итерации: больше = больше деталей, но медленнее."
+                }
             },
-            "center_y": {
-                "type": "entry",
-                "default": 0.0,
-                "description": "Y-coordinate of view center. Pan up/down."
+            "julia": {
+                "c_real": {
+                    "type": "scale",
+                    "min": -2.0,
+                    "max": 2.0,
+                    "default": -0.7,
+                    "step": 0.01,
+                    "description": "Вещественная часть c: меняет форму фрактала по горизонтали."
+                },
+                "c_imag": {
+                    "type": "scale",
+                    "min": -2.0,
+                    "max": 2.0,
+                    "default": 0.27017,
+                    "step": 0.01,
+                    "description": "Мнимая часть c: меняет форму фрактала по вертикали."
+                },
+                "center_x": {
+                    "type": "entry",
+                    "default": 0.0,
+                    "description": "Координата X центра вида. Перемещение влево/вправо."
+                },
+                "center_y": {
+                    "type": "entry",
+                    "default": 0.0,
+                    "description": "Координата Y центра вида. Перемещение вверх/вниз."
+                },
+                "zoom": {
+                    "type": "scale",
+                    "min": 0.1,
+                    "max": 100.0,
+                    "default": 1.0,
+                    "step": 0.1,
+                    "description": "Уровень масштабирования. Больше = ближе."
+                },
+                "max_iterations": {
+                    "type": "scale",
+                    "min": 10,
+                    "max": 500,
+                    "default": 100,
+                    "step": 10,
+                    "description": "Итерации: больше = больше деталей, но медленнее."
+                }
             },
-            "zoom": {
-                "type": "scale",
-                "min": 0.1,
-                "max": 100.0,
-                "default": 1.0,
-                "step": 0.1,
-                "description": "Zoom level. Higher = more zoomed in (more detail)."
-            },
-            "max_iterations": {
-                "type": "scale",
-                "min": 10,
-                "max": 500,
-                "default": 100,
-                "step": 10,
-                "description": "Iterations: Higher = more detail but slower rendering."
-            }
-        },
-        "julia": {
-            "c_real": {
-                "type": "scale",
-                "min": -2.0,
-                "max": 2.0,
-                "default": -0.7,
-                "step": 0.01,
-                "description": "Real part of c: Changes the fractal shape horizontally."
-            },
-            "c_imag": {
-                "type": "scale",
-                "min": -2.0,
-                "max": 2.0,
-                "default": 0.27017,
-                "step": 0.01,
-                "description": "Imaginary part of c: Changes the fractal shape vertically."
-            },
-            "center_x": {
-                "type": "entry",
-                "default": 0.0,
-                "description": "X-coordinate of view center. Pan left/right."
-            },
-            "center_y": {
-                "type": "entry",
-                "default": 0.0,
-                "description": "Y-coordinate of view center. Pan up/down."
-            },
-            "zoom": {
-                "type": "scale",
-                "min": 0.1,
-                "max": 100.0,
-                "default": 1.0,
-                "step": 0.1,
-                "description": "Zoom level. Higher = more zoomed in."
-            },
-            "max_iterations": {
-                "type": "scale",
-                "min": 10,
-                "max": 500,
-                "default": 100,
-                "step": 10,
-                "description": "Iterations: Higher = more detail but slower rendering."
-            }
-        },
-        "tree": {
-            "branch_angle": {
-                "type": "scale",
-                "min": 0.1,
-                "max": 1.5,
-                "default": 0.5,
-                "step": 0.05,
-                "description": "Angle between branches (radians). Wider = more spread out."
-            },
-            "length_ratio": {
-                "type": "scale",
-                "min": 0.5,
-                "max": 0.9,
-                "default": 0.7,
-                "step": 0.01,
-                "description": "Child branch length ratio. Higher = longer branches."
-            },
-            "max_depth": {
-                "type": "scale",
-                "min": 5,
-                "max": 15,
-                "default": 10,
-                "step": 1,
-                "description": "Recursion depth. Higher = more branches but much slower."
-            },
-            "start_length": {
-                "type": "scale",
-                "min": 50,
-                "max": 300,
-                "default": 150,
-                "step": 10,
-                "description": "Initial trunk length in pixels."
+            "tree": {
+                "branch_angle": {
+                    "type": "scale",
+                    "min": 0.1,
+                    "max": 1.5,
+                    "default": 0.5,
+                    "step": 0.05,
+                    "description": "Угол между ветвями (радианы). Больше = шире."
+                },
+                "length_ratio": {
+                    "type": "scale",
+                    "min": 0.5,
+                    "max": 0.9,
+                    "default": 0.7,
+                    "step": 0.01,
+                    "description": "Отношение длины дочерней ветви. Больше = длиннее ветви."
+                },
+                "max_depth": {
+                    "type": "scale",
+                    "min": 5,
+                    "max": 15,
+                    "default": 10,
+                    "step": 1,
+                    "description": "Глубина рекурсии. Больше = больше ветвей, но намного медленнее."
+                },
+                "start_length": {
+                    "type": "scale",
+                    "min": 50,
+                    "max": 300,
+                    "default": 150,
+                    "step": 10,
+                    "description": "Начальная длина ствола в пикселях."
+                }
             }
         }
-    }
-    
-    return parameters.get(fractal_type, {})
-
 
 def generate_fractal(
     fractal_type: str,
