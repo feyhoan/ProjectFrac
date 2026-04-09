@@ -351,7 +351,7 @@ class FractalApp:
             cursor="hand2",
             command=self.show_main_menu
         )
-        back_button.pack(fill=tk.X, ipady=8, mt=10)
+        back_button.pack(fill=tk.X, ipady=8, pady=10)
     
     def _create_parameter_controls(self, parent):
         """Create controls for fractal parameters."""
